@@ -1,0 +1,150 @@
+<!DOCTYPE html><html><head><title>Split-Life Emulator</title><style>button{width:1000px;height:50px}</style></head><body style="margin:10px"><canvas height="500" id="a" width="1000"></canvas><button id="b">Step</button><button id="c">Reset</button><script>
+setTimeout(function() {
+    var canvas = document.getElementById("a"), ctx = canvas.getContext("2d"), grid, viewX = 252, viewY = 126, scale = 4, dragState = 0;
+    function resetGrid() {
+        grid = [];
+        for (var y = 0; y < 256; y++)
+            grid.push(new Array(512).fill(0));
+    }
+    function step() {
+        var tmp = grid;
+        resetGrid();
+        for (var y = 0; y < 256; y++)
+            for (var x = 0; x < 512; x++)
+                if (((x + y) & 1) == 0) {
+                    var sum = 0;
+                    sum += get(tmp, [x - 1, y - 1, true]);
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x, y, false]);
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x, y, false]);
+                    sum += get(tmp, [x + 1, y + 1, false]);
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x, y, false]);
+                    sum += get(tmp, [x + 1, y + 1, true]);
+                    sum += get(tmp, [x + 1, y + 1, false]);
+                    set(grid, [x, y, true], sum == 3 || get(tmp, [x, y, true]) == 1 && sum == 2 ? 1 : 0);
+                    sum = 0;
+                    sum += get(tmp, [x - 1, y - 1, true]);
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x, y, false]);
+                    sum += get(tmp, [x + 1, y + 1, true]);
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x, y, true]);
+                    sum += get(tmp, [x + 1, y + 1, false]);
+                    sum += get(tmp, [x, y, false]);
+                    sum += get(tmp, [x + 1, y + 1, true]);
+                    sum += get(tmp, [x + 1, y + 1, false]);
+                    set(grid, [x, y, false], sum == 3 || get(tmp, [x, y, false]) == 1 && sum == 2 ? 1 : 0);
+                }
+                else
+                {
+                    var sum = 0;
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x, y, true]);
+                    sum += get(tmp, [x, y, false]);
+                    sum += get(tmp, [x + 1, y + 1, false]);
+                    sum += get(tmp, [x - 1, y - 1, true]);
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x + 1, y + 1, true]);
+                    sum += get(tmp, [x + 1, y + 1, false]);
+                    sum += get(tmp, [x - 1, y - 1, false]);
+                    sum += get(tmp, [x, y, true]);
+                    sum += get(tmp, [x, y, false]);
+                    sum += get(tmp, [x + 1, y + 1, false]);
+                    set(grid, [x, y, false], sum == 3 || get(tmp, [x, y, false]) == 1 && sum == 2 ? 1 : 0);
+                }
+        draw();
+    }
+    function draw() {
+        requestAnimationFrame(function() {
+            var cell = 1000 / (1 << scale);
+            ctx.clearRect(0, 0, 1000, 500);
+            if (scale < 7) {
+                ctx.beginPath();
+                for (var x = 0, xi = viewX; x <= 1000; x += cell, xi++) {
+                    ctx.moveTo(x, 500);
+                    ctx.lineTo(x, 0);
+                    if (xi % 2 == 0)
+                        ctx.lineTo(x + 500, 500);
+                }
+                for (var y = 0, yi = viewY; y <= 500; y += cell, yi++) {
+                    ctx.moveTo(1000, y);
+                    ctx.lineTo(0, y);
+                    if (yi % 2 == 0)
+                        ctx.lineTo(1000, y + 1000);
+                }
+                ctx.stroke();
+            }
+            for (var y = 0; y < 256; y++)
+                for (var x = 0; x < 512; x++)
+                    if (grid[y][x] != 0)
+                        if (((x + y) & 1) == 0) {
+                            ctx.beginPath();
+                            if (get(grid, [x, y, true]) == 1) {
+                                ctx.moveTo(cell * (x - viewX), cell * (y - viewY));
+                                ctx.lineTo(cell * (x - viewX), cell * (y - viewY + 1));
+                                ctx.lineTo(cell * (x - viewX + 1), cell * (y - viewY + 1));
+                                ctx.closePath();
+                            }
+                            if (get(grid, [x, y, true]) == 1) {
+                                ctx.moveTo(cell * (x - viewX), cell * (y - viewY));
+                                ctx.lineTo(cell * (x - viewX + 1), cell * (y - viewY));
+                                ctx.lineTo(cell * (x - viewX + 1), cell * (y - viewY + 1));
+                                ctx.closePath();
+                            }
+                            ctx.fill();
+                        }
+                        else
+                            ctx.fillRect(cell * (x - viewX), cell * (y - viewY), cell, cell);                    
+        });
+    }
+    function getPos(pxlX, pxlY) {
+        var cell = 1000 / (1 << scale);
+        var posX = Math.floor(pxlX / cell) + viewX, posY = Math.floor(pxlY / cell) + viewY;
+        return [posX, posY, ((posX + posY) & 1) == 0 && pxlX % cell < pxlY % cell];
+    }
+    function get(arr, pos) {
+        if (arr.length == 0 || pos[0] < 0 || pos[0] >= arr[0].length || pos[1] < 0 || pos[1] >= arr.length)
+            return 0;
+        var val = arr[pos[1]][pos[0]];
+        return pos[2] ? (val >> 1) : (val & 1);
+    }
+    function set(arr, pos, val) {
+        if (pos[2])
+            arr[pos[1]][pos[0]] = (arr[pos[1]][pos[0]] & 1) | (val << 1);
+        else
+            arr[pos[1]][pos[0]] = (arr[pos[1]][pos[0]] & 2) | val;
+    }
+    resetGrid();
+    draw();
+    document.onkeyup = function(evt) { if (evt.char == " ") step(); }
+    document.onwheel = function(evt) {
+        evt.preventDefault();
+        if (evt.deltaY > 0 && scale < 9)
+            scale++;
+        else if (evt.deltaY < 0 && scale > 4)
+            scale--;
+        draw();
+    }
+    canvas.onmousedown = function(evt) {
+        var pos = getPos(evt.screenX - 10, evt.screenY - 10);
+        dragState = set(grid, pos, 1 - get(grid, pos)) + 1;
+        draw();
+    }
+    canvas.onmousemove = function(evt) {
+        if (dragState == 0)
+            return;
+        set(grid, getPos(evt.screenX - 10, evt.screenY - 10), dragState - 1);
+        draw();
+    };
+    canvas.onmouseup = function() { dragState = 0; };
+    document.getElementById("b").onclick = step;
+    document.getElementById("c").onclick = function() {
+        resetGrid();
+        offX = offY = viewX = viewY = 0;
+        scale = 4;
+        draw();
+    }
+}, 1000);
+</script></body></html>
