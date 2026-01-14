@@ -1,0 +1,57 @@
+on:
+  schedule:
+    - cron: 30 3 10,25 * *
+jobs:
+  update-files:
+    permissions:
+      contents: write
+    runs-on: ubuntu-slim
+    steps:
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y tzdata
+          node --input-type=module - <<'EOF'
+          import { spawn } from 'node:child_process';
+          import { open, readFile } from 'node:fs/promises';
+          import { env } from 'node:process';
+          function run(command, args) {
+            return new Promise((resolve, reject) => {
+              const child = spawn(command, args, { stdio: ['ignore', 'inherit', 'inherit'] });
+              child.on('error', (err) => {
+                child.removeAllListeners();
+                reject(err);
+              });
+              child.on('exit', (code, signal) => {
+                child.removeAllListeners();
+                if (code === 0)
+                  resolve();
+                else
+                  reject(new Error(code !== null ? `child exited with code ${code}` : `child terminated due to signal ${signal}`));
+              });
+            });
+          }
+          const url = new URL('/', env.GITHUB_SERVER_URL);
+          url.username = env.GITHUB_REPOSITORY_OWNER;
+          url.password = env.GH_TOKEN;
+          url.pathname = `/${env.GITHUB_REPOSITORY}.git`;
+          await run('git', ['-c', 'gc.auto=0', 'clone', '--depth=1', url.href, '.']);
+          let commit = false;
+          {
+            const srcData = await readFile('/usr/share/zoneinfo/leap-seconds.list');
+            await using dest = await open('leap-seconds.list', 'a+');
+            const destData = await dest.readFile();
+            if (!srcData.equals(destData)) {
+              await dest.truncate();
+              await dest.writeFile(srcData);
+              commit = true;
+            }
+          }
+          if (commit) {
+            await run('git', ['add', 'leap-seconds.list']);
+            await run('git', ['-c', 'gc.auto=0', '-c', `user.name=${env.GITHUB_REPOSITORY_OWNER}`, '-c', `user.email=${env.EMAIL}`, 'commit', '-m', 'Update leap-seconds.list']);
+            await run('git', ['push']);
+          }
+          EOF
+        env:
+          EMAIL: ${{secrets.EMAIL}}
+          GH_TOKEN: ${{github.token}}
